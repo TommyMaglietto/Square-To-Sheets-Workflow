@@ -65,8 +65,8 @@ python execution/run_pipeline.py
 1. The script fetches all your customers from Square
 2. It writes them into your Google Sheet with these columns:
 
-| ID | Name | Last Name | Email | Phone | Created | Updated | Notes |
-|---|---|---|---|---|---|---|---|
+| ID | Name | Last Name | Email | Phone | Created | Updated | Notes | Last Booked |
+|---|---|---|---|---|---|---|---|---|
 
 That's it. Run it again anytime you want to refresh your customer list. It appends new rows each time, so clear the sheet first if you want a clean sync.
 

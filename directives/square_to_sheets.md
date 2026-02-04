@@ -44,8 +44,16 @@ python execution/write_to_google_sheets.py
 - Writes the full list to `.tmp/customers.json`
 - Prints the number of customers fetched
 
-**Step 2 — `write_to_google_sheets.py`**
-- Reads `.tmp/customers.json`
+**Step 2 — `fetch_square_bookings.py`**
+- Reads `SQUARE_API_TOKEN` from `.env`
+- Paginates through all bookings via `GET /v2/bookings` on `connect.squareup.com`
+- Excludes cancelled bookings (`CANCELLED_BY_CUSTOMER`, `CANCELLED_BY_SELLER`)
+- Writes the filtered list to `.tmp/bookings.json`
+- Prints the number of bookings fetched
+
+**Step 3 — `write_to_google_sheets.py`**
+- Reads `.tmp/customers.json` and `.tmp/bookings.json`
+- Merges bookings into customers: finds the most recent `start_at` per customer → `last_booked_date`
 - Reads `GOOGLE_SHEET_ID` and `GOOGLE_SHEET_INDEX` from `.env`
 - Authenticates via OAuth2 (browser popup on first run; silent on subsequent runs using cached `token.json`)
 - Writes the header row if the sheet is empty
@@ -61,9 +69,9 @@ python execution/write_to_google_sheets.py
 ---
 
 ## Google Sheet Column Layout
-| A | B | C | D | E | F | G | H |
-|---|---|---|---|---|---|---|---|
-| id | given_name | family_name | email_address | phone_number | created_at | updated_at | note |
+| A | B | C | D | E | F | G | H | I |
+|---|---|---|---|---|---|---|---|---|
+| id | given_name | family_name | email_address | phone_number | created_at | updated_at | note | last_booked_date |
 
 ---
 

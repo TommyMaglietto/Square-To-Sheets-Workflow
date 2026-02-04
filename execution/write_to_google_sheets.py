@@ -30,6 +30,7 @@ SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 CREDENTIALS_PATH = "credentials.json"
 TOKEN_PATH = "token.json"
 CUSTOMERS_PATH = os.path.join(".tmp", "customers.json")
+BOOKINGS_PATH  = os.path.join(".tmp", "bookings.json")
 
 # Column order — must match the header row exactly
 COLUMNS = [
@@ -41,6 +42,7 @@ COLUMNS = [
     "created_at",
     "updated_at",
     "note",
+    "last_booked_date",
 ]
 
 load_dotenv()
@@ -64,6 +66,11 @@ if not os.path.exists(CREDENTIALS_PATH):
 if not os.path.exists(CUSTOMERS_PATH):
     print("ERROR: .tmp/customers.json not found.")
     print("       Run fetch_square_customers.py first.")
+    sys.exit(1)
+
+if not os.path.exists(BOOKINGS_PATH):
+    print("ERROR: .tmp/bookings.json not found.")
+    print("       Run fetch_square_bookings.py first.")
     sys.exit(1)
 
 # ---------------------------------------------------------------------------
@@ -114,9 +121,25 @@ def get_sheet_tab_name(service):
 # Main
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    # Load customer data
+    # Load customer and booking data
     with open(CUSTOMERS_PATH, "r", encoding="utf-8") as f:
         customers = json.load(f)
+
+    with open(BOOKINGS_PATH, "r", encoding="utf-8") as f:
+        bookings = json.load(f)
+
+    # Build a map: customer_id -> most recent start_at (the last booked date)
+    last_booked = {}
+    for b in bookings:
+        cid = b.get("customer_id")
+        start = b.get("start_at", "")
+        if cid and start:
+            if start > last_booked.get(cid, ""):
+                last_booked[cid] = start
+
+    # Inject last_booked_date into each customer record
+    for c in customers:
+        c["last_booked_date"] = last_booked.get(c["id"], "")
 
     # Authenticate and build API client
     creds = get_google_credentials()
@@ -129,7 +152,7 @@ if __name__ == "__main__":
     existing = (
         service.spreadsheets()
         .values()
-        .get(spreadsheetId=SHEET_ID, range=f"'{tab_name}'!A1:H1")
+        .get(spreadsheetId=SHEET_ID, range=f"'{tab_name}'!A1:I1")
         .execute()
     )
     sheet_is_empty = "values" not in existing
