@@ -26,9 +26,6 @@ SQUARE_BASE_URL = "https://connect.squareup.com/v2"
 SQUARE_VERSION  = "2026-01-22"
 OUTPUT_PATH = os.path.join(".tmp", "bookings.json")
 
-# Statuses to exclude — these bookings never actually happened
-CANCELLED_STATUSES = {"CANCELLED_BY_CUSTOMER", "CANCELLED_BY_SELLER"}
-
 load_dotenv()
 
 TOKEN = os.getenv("SQUARE_API_TOKEN", "").strip()
@@ -68,12 +65,7 @@ def fetch_all_bookings():
 
         data = response.json()
 
-        # Filter out cancelled bookings — only keep ones that actually happened
-        bookings = [
-            b for b in data.get("bookings", [])
-            if b.get("status") not in CANCELLED_STATUSES
-        ]
-        all_bookings.extend(bookings)
+        all_bookings.extend(data.get("bookings", []))
 
         cursor = data.get("cursor")
         if not cursor:
@@ -93,4 +85,4 @@ if __name__ == "__main__":
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
         json.dump(bookings, f, indent=2, ensure_ascii=False)
 
-    print(f"Fetched {len(bookings)} bookings (cancelled excluded). Saved to {OUTPUT_PATH}")
+    print(f"Fetched {len(bookings)} bookings. Saved to {OUTPUT_PATH}")
