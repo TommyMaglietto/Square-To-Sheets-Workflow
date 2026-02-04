@@ -1,0 +1,19 @@
+# Secrets and credentials
+.env
+credentials.json
+token.json
+
+# Intermediate / generated files
+.tmp/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+
+# Claude
+.claude/
