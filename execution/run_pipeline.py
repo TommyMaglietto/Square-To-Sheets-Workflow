@@ -32,6 +32,10 @@ STEPS = [
         "script": "execution/fetch_square_bookings.py",
     },
     {
+        "label": "Fetching payments from Square...",
+        "script": "execution/fetch_square_payments.py",
+    },
+    {
         "label": "Writing to Google Sheets...",
         "script": "execution/write_to_google_sheets.py",
     },

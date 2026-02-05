@@ -63,3 +63,11 @@ This file is a living document — update it whenever a new error is encountered
 - **Root cause:** Base URL was `https://api.squareup.com` — the correct URL is `https://connect.squareup.com`. Additionally, the `Square-Version` header (e.g. `2026-01-22`) is required on every request.
 - **Fix:** Updated `fetch_square_customers.py` to use `connect.squareup.com` and include `Square-Version` header. Endpoint is `GET /v2/customers` (not `/v2/customers/list`).
 - **Note:** `api.squareup.com` does resolve and returns Square/Cloudflare headers, which made this hard to diagnose. Always verify against Square's docs at `developer.squareup.com/reference/square`.
+
+### 2026-02-04 — Bookings endpoint returns only upcoming bookings by default
+- **Symptom:** `bookings.json` contained only 5 records, all with future `start_at` dates. 96 of 105 customers had empty `last_booked_date`.
+- **Root cause (two issues):**
+  1. The correct params are **`start_at_min`** and **`start_at_max`**, NOT `start_at`. Square silently ignores unrecognized params and defaults `start_at_min` to current time.
+  2. The API enforces a **max 31-day window** between `start_at_min` and `start_at_max`. You cannot set a wide range in a single request.
+- **Fix:** Rewrote `fetch_square_bookings.py` to slide a 30-day window from `HISTORY_START` (2024) to `HISTORY_END` (2027), making one paginated request per window. Result: 328 bookings, 100 of 105 customers filled.
+- **Note:** The 5 remaining customers (all DIRECTORY/MERGE/THIRD_PARTY sources) have no bookings, payments, or completed orders in Square — they are contacts without appointment history. Orders API was checked; `customer_id_filter` appears unreliable (returned identical results regardless of customer ID).

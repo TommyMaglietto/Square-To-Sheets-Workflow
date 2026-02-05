@@ -31,6 +31,7 @@ CREDENTIALS_PATH = "credentials.json"
 TOKEN_PATH = "token.json"
 CUSTOMERS_PATH = os.path.join(".tmp", "customers.json")
 BOOKINGS_PATH  = os.path.join(".tmp", "bookings.json")
+PAYMENTS_PATH  = os.path.join(".tmp", "payments.json")
 
 # Column order — must match the header row exactly
 COLUMNS = [
@@ -71,6 +72,11 @@ if not os.path.exists(CUSTOMERS_PATH):
 if not os.path.exists(BOOKINGS_PATH):
     print("ERROR: .tmp/bookings.json not found.")
     print("       Run fetch_square_bookings.py first.")
+    sys.exit(1)
+
+if not os.path.exists(PAYMENTS_PATH):
+    print("ERROR: .tmp/payments.json not found.")
+    print("       Run fetch_square_payments.py first.")
     sys.exit(1)
 
 # ---------------------------------------------------------------------------
@@ -121,14 +127,17 @@ def get_sheet_tab_name(service):
 # Main
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    # Load customer and booking data
+    # Load customer, booking, and payment data
     with open(CUSTOMERS_PATH, "r", encoding="utf-8") as f:
         customers = json.load(f)
 
     with open(BOOKINGS_PATH, "r", encoding="utf-8") as f:
         bookings = json.load(f)
 
-    # Build a map: customer_id -> most recent start_at (the last booked date)
+    with open(PAYMENTS_PATH, "r", encoding="utf-8") as f:
+        payments = json.load(f)
+
+    # Build a map: customer_id -> most recent start_at (from bookings)
     last_booked = {}
     for b in bookings:
         cid = b.get("customer_id")
@@ -137,9 +146,22 @@ if __name__ == "__main__":
             if start > last_booked.get(cid, ""):
                 last_booked[cid] = start
 
-    # Inject last_booked_date into each customer record
+    # Build a map: customer_id -> most recent created_at (from completed payments).
+    # This is the fallback for customers whose appointments were entered manually
+    # by staff and never went through the booking flow.
+    last_paid = {}
+    for p in payments:
+        cid = p.get("customer_id")
+        created = p.get("created_at", "")
+        if cid and created and p.get("status") == "COMPLETED":
+            if created > last_paid.get(cid, ""):
+                last_paid[cid] = created
+
+    # Inject last_booked_date: whichever is more recent — the booking or the payment.
+    # Both are ISO 8601 strings so plain string comparison gives correct chronological order.
     for c in customers:
-        c["last_booked_date"] = last_booked.get(c["id"], "")
+        cid = c["id"]
+        c["last_booked_date"] = max(last_booked.get(cid, ""), last_paid.get(cid, ""))
 
     # Authenticate and build API client
     creds = get_google_credentials()
@@ -148,36 +170,25 @@ if __name__ == "__main__":
     # Resolve tab name
     tab_name = get_sheet_tab_name(service)
 
-    # Check if the sheet is empty (no header yet)
-    existing = (
-        service.spreadsheets()
-        .values()
-        .get(spreadsheetId=SHEET_ID, range=f"'{tab_name}'!A1:I1")
-        .execute()
-    )
-    sheet_is_empty = "values" not in existing
+    # Clear the sheet first — every run is a full fresh sync
+    service.spreadsheets().values().clear(
+        spreadsheetId=SHEET_ID,
+        range=f"'{tab_name}'",
+    ).execute()
 
-    # Build the rows: header (if needed) + data
-    rows = []
-    if sheet_is_empty:
-        rows.append(COLUMNS)  # header row
+    # Build the rows: header + data
+    rows = [COLUMNS]  # header row always included after clear
 
     for customer in customers:
         row = [str(customer.get(col, "")) for col in COLUMNS]
         rows.append(row)
 
-    if not rows:
-        print("Nothing to write — sheet already has a header and there are no customers.")
-        sys.exit(0)
-
-    # Append
-    service.spreadsheets().values().append(
+    # Write
+    service.spreadsheets().values().update(
         spreadsheetId=SHEET_ID,
         range=f"'{tab_name}'!A1",
         valueInputOption="RAW",
-        insertDataOption="INSERT_ROWS",
         body={"values": rows},
     ).execute()
 
-    data_rows = len(rows) - (1 if sheet_is_empty else 0)
-    print(f"Wrote {data_rows} customer row(s) to Google Sheet {SHEET_ID} (tab: {tab_name})")
+    print(f"Wrote {len(customers)} customer row(s) to Google Sheet {SHEET_ID} (tab: {tab_name})")

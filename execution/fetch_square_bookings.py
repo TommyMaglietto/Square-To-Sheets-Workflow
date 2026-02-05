@@ -15,6 +15,7 @@ Requires:
 import json
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 
 import requests
 from dotenv import load_dotenv
@@ -26,6 +27,13 @@ SQUARE_BASE_URL = "https://connect.squareup.com/v2"
 SQUARE_VERSION  = "2026-01-22"
 OUTPUT_PATH = os.path.join(".tmp", "bookings.json")
 
+# Bookings endpoint uses start_at_min / start_at_max and enforces a max
+# 31-day window per request.  We slide a 30-day window from HISTORY_START
+# through to HISTORY_END to collect the full range.
+HISTORY_START = datetime(2024, 1, 1, tzinfo=timezone.utc)
+HISTORY_END   = datetime(2027, 1, 1, tzinfo=timezone.utc)
+WINDOW_DAYS   = 30
+
 load_dotenv()
 
 TOKEN = os.getenv("SQUARE_API_TOKEN", "").strip()
@@ -35,7 +43,7 @@ if not TOKEN:
     sys.exit(1)
 
 # ---------------------------------------------------------------------------
-# Fetch all bookings (paginated)
+# Fetch all bookings (sliding 30-day window + pagination within each window)
 # ---------------------------------------------------------------------------
 def fetch_all_bookings():
     headers = {
@@ -45,31 +53,40 @@ def fetch_all_bookings():
     }
 
     all_bookings = []
-    cursor = None
+    window_start = HISTORY_START
 
-    while True:
-        params = {"limit": 100}
-        if cursor:
-            params["cursor"] = cursor
+    while window_start < HISTORY_END:
+        window_end = min(window_start + timedelta(days=WINDOW_DAYS), HISTORY_END)
+        cursor = None
 
-        response = requests.get(
-            f"{SQUARE_BASE_URL}/bookings",
-            headers=headers,
-            params=params,
-        )
+        while True:
+            params = {
+                "limit": 100,
+                "start_at_min": window_start.isoformat(),
+                "start_at_max": window_end.isoformat(),
+            }
+            if cursor:
+                params["cursor"] = cursor
 
-        if response.status_code != 200:
-            print(f"ERROR: Square API returned {response.status_code}")
-            print(response.text)
-            sys.exit(1)
+            response = requests.get(
+                f"{SQUARE_BASE_URL}/bookings",
+                headers=headers,
+                params=params,
+            )
 
-        data = response.json()
+            if response.status_code != 200:
+                print(f"ERROR: Square API returned {response.status_code}")
+                print(response.text)
+                sys.exit(1)
 
-        all_bookings.extend(data.get("bookings", []))
+            data = response.json()
+            all_bookings.extend(data.get("bookings", []))
 
-        cursor = data.get("cursor")
-        if not cursor:
-            break
+            cursor = data.get("cursor")
+            if not cursor:
+                break
+
+        window_start = window_end
 
     return all_bookings
 
